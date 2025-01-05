@@ -31,6 +31,48 @@ class DNSParser
 
     data
   end
+
+  def self.parse_response(response)
+    data = {}
+    data[:transaction_id] = response[0..1].unpack1('n')
+    data[:flags] = response[2..3].unpack1('n')
+    data[:questions] = response[4..5].unpack1('n')
+    data[:answer_rrs] = response[6..7].unpack1('n')
+    data[:authority_rrs] = response[8..9].unpack1('n')
+    data[:additional_rrs] = response[10..11].unpack1('n')
+
+    offset = 12
+    data[:queries] = []
+    data[:questions].times do
+      qname = []
+      while (length = response[offset].ord) != 0
+        offset += 1
+        qname << response[offset, length]
+        offset += length
+      end
+      offset += 1
+      qtype = response[offset, 2].unpack1('n')
+      qclass = response[offset + 2, 2].unpack1('n')
+      offset += 4
+
+      data[:queries] << { qname: qname.join('.'), qtype: qtype, qclass: qclass }
+    end
+
+    data[:answers] = []
+    data[:answer_rrs].times do
+      name = response[offset, 2].unpack1('n')
+      type = response[offset + 2, 2].unpack1('n')
+      klass = response[offset + 4, 2].unpack1('n')
+      ttl = response[offset + 6, 4].unpack1('N')
+      rdlength = response[offset + 10, 2].unpack1('n')
+      rdata = response[offset + 12, rdlength]
+      offset += 12 + rdlength
+
+      data[:answers] << { name: name, type: type, class: klass, ttl: ttl, rdlength: rdlength, rdata: rdata }
+    end
+
+    data
+  end
 end
 
 class Server
@@ -46,7 +88,6 @@ class Server
       puts "Received message from #{addr.inspect}"
 
       parsed_data = DNSParser.parse(message)
-      puts "Parsed data: #{parsed_data.inspect}"
 
       response = build_response(parsed_data)
       @socket.send(response, 0, addr[3], addr[1])
@@ -70,7 +111,8 @@ class Server
       socket.close
 
       # Parse the response and store it in the cache
-      cached_response = response
+      parsed_response = DNSParser.parse_response(response)
+      cached_response = parsed_response
       @cache[qname] = cached_response
     end
 
@@ -86,12 +128,12 @@ class Server
     qtype = [parsed_data[:queries][0][:qtype]].pack('n')
     qclass = [parsed_data[:queries][0][:qclass]].pack('n')
 
-    answer_name = qname_encoded
     answer_type = qtype
     answer_class = qclass
-    ttl = [60].pack('N') # Time to live
+    answer_name = [cached_response[:answers][0][:name]].pack('n')
+    ttl = [cached_response[:answers][0][:ttl]].pack('N')
     rdlength = [4].pack('n') # Length of the RDATA field
-    rdata = cached_response[12..15] # Extract the IP address from the cached response
+    rdata = cached_response[:answers][0][:rdata] # Extract the IP address from the cached response
 
     transaction_id + flags + questions + answer_rrs + authority_rrs + additional_rrs + qname_encoded + qtype + qclass + answer_name + answer_type + answer_class + ttl + rdlength + rdata
   end
