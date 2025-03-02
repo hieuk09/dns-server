@@ -46,10 +46,41 @@ class DNSResponse
     unpack(10, 11)
   end
 
+  def to_response(dns_message)
+    qname_encoded = "#{dns_message.qname.split('.').map { |part| [part.length].pack('C') + part }.join}\0"
+    answer_type = qtype = [dns_message.qtype].pack('n')
+    answer_class = qclass = [dns_message.qclass].pack('n')
+
+    answer_name = [answers[0][:name]].pack('n')
+    ttl = [answers[0][:ttl]].pack('N')
+    rdlength = [4].pack('n') # Length of the RDATA field
+    rdata = answers[0][:rdata] # Extract the IP address from the cached response
+
+    dns_message.raw_transaction_id +
+      raw(2, 3) +
+      raw(4, 5) +
+      raw(6, 7) +
+      raw(8, 9) +
+      raw(10, 11) +
+      qname_encoded +
+      qtype +
+      qclass +
+      answer_name +
+      answer_type +
+      answer_class +
+      ttl +
+      rdlength +
+      rdata
+  end
+
   private
 
   def unpack(start, finish)
-    @response[start..finish].unpack1('n')
+    raw(start, finish).unpack1('n')
+  end
+
+  def raw(start, finish)
+    @response[start..finish]
   end
 
   def parse_response(response)

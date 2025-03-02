@@ -1,6 +1,8 @@
 class DNSMessage
   DEFAULT_OFFSET = 12
 
+  attr_reader :message
+
   def initialize(message)
     @message = message
   end
@@ -22,12 +24,24 @@ class DNSMessage
     unpack(0, 1)
   end
 
+  def raw_transaction_id
+    raw(0, 1)
+  end
+
   def flags
     unpack(2, 3)
   end
 
+  def raw_flags
+    raw(2, 3)
+  end
+
   def questions
     @questions ||= unpack(4, 5)
+  end
+
+  def raw_questions
+    raw(4, 5)
   end
 
   def answer_rrs
@@ -65,9 +79,31 @@ class DNSMessage
     end
   end
 
+  def qname
+    return if queries.empty?
+
+    queries.first[:qname]
+  end
+
+  def qtype
+    return if queries.empty?
+
+    queries.first[:qtype]
+  end
+
+  def qclass
+    return if queries.empty?
+
+    queries.first[:qclass]
+  end
+
   private
 
   def unpack(start, finish)
-    @message[start..finish].unpack1('n')
+    raw(start, finish).unpack1('n')
+  end
+
+  def raw(start, finish)
+    @message[start..finish]
   end
 end
